@@ -1,48 +1,91 @@
-name: .NET CI/CD Pipeline
+name: .NET CI/CD with SonarQube
 
 on:
   push:
     branches: [ "main", "develop" ]
   pull_request:
+    types: [opened, synchronize, reopened]
     branches: [ "main", "develop" ]
 
-# Add this permissions section
-permissions:
-  contents: read
-  checks: write
-  pull-requests: write
-
 jobs:
-  build-and-test:
-    runs-on: ubuntu-latest
+  build-test-analyze:
+    name: Build, Test and Analyze
+    runs-on: windows-latest
     
     steps:
+    # Setup Java (required for SonarQube)
+    - name: Set up JDK 17
+      uses: actions/setup-java@v4
+      with:
+        java-version: 17
+        distribution: 'zulu'
+    
+    # Checkout code
     - name: Checkout code
       uses: actions/checkout@v4
-      
+      with:
+        fetch-depth: 0  # Shallow clones should be disabled for better relevancy
+    
+    # Setup .NET
     - name: Setup .NET
       uses: actions/setup-dotnet@v4
       with:
         dotnet-version: '8.0.x'
-        
+    
+    # Cache SonarQube packages
+    - name: Cache SonarQube packages
+      uses: actions/cache@v4
+      with:
+        path: ~\sonar\cache
+        key: ${{ runner.os }}-sonar
+        restore-keys: ${{ runner.os }}-sonar
+    
+    # Cache SonarQube scanner
+    - name: Cache SonarQube scanner
+      id: cache-sonar-scanner
+      uses: actions/cache@v4
+      with:
+        path: ${{ runner.temp }}\scanner
+        key: ${{ runner.os }}-sonar-scanner
+        restore-keys: ${{ runner.os }}-sonar-scanner
+    
+    # Install SonarQube scanner
+    - name: Install SonarQube scanner
+      if: steps.cache-sonar-scanner.outputs.cache-hit != 'true'
+      shell: powershell
+      run: |
+        New-Item -Path ${{ runner.temp }}\scanner -ItemType Directory -Force
+        dotnet tool update dotnet-sonarscanner --tool-path ${{ runner.temp }}\scanner
+    
+    # Restore dependencies
     - name: Restore dependencies
       run: dotnet restore
-      
+    
+    # Begin SonarQube analysis
+    - name: Begin SonarQube analysis
+      env:
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      shell: powershell
+      run: |
+        ${{ runner.temp }}\scanner\dotnet-sonarscanner begin /k:"Balaji-Sundar-S_CI-CD-Pipeline-Learning" /o:"balaji-sundar-s" /d:sonar.token="${{ secrets.SONAR_TOKEN }}" /d:sonar.host.url="https://sonarcloud.io"
+    
+    # Build solution
     - name: Build solution
       run: dotnet build --configuration Release --no-restore
-      
+    
+    # Run tests
     - name: Run tests
-      run: dotnet test --no-build --configuration Release --verbosity normal --logger "trx;LogFileName=test-results.trx"
-      
-    - name: Publish test results
-      uses: dorny/test-reporter@v1
-      if: always()
-      with:
-        name: NUnit Test Results
-        path: '**/test-results.trx'
-        reporter: dotnet-trx
-        fail-on-error: true
-        
+      run: dotnet test --configuration Release --no-build --verbosity normal --logger "trx;LogFileName=test-results.trx"
+    
+    # End SonarQube analysis
+    - name: End SonarQube analysis
+      env:
+        SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      shell: powershell
+      run: |
+        ${{ runner.temp }}\scanner\dotnet-sonarscanner end /d:sonar.token="${{ secrets.SONAR_TOKEN }}"
+    
+    # Upload test results
     - name: Upload test results
       uses: actions/upload-artifact@v4
       if: always()
