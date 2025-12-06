@@ -1,4 +1,4 @@
-name: .NET CI/CD with SonarQube
+name: .NET CI/CD with SonarQube and Coverage
 
 on:
   push:
@@ -9,7 +9,7 @@ on:
 
 jobs:
   build-test-analyze:
-    name: Build, Test and Analyze
+    name: Build, Test, Coverage and Analyze
     runs-on: windows-latest
     
     steps:
@@ -24,7 +24,7 @@ jobs:
     - name: Checkout code
       uses: actions/checkout@v4
       with:
-        fetch-depth: 0  # Shallow clones should be disabled for better relevancy
+        fetch-depth: 0
     
     # Setup .NET
     - name: Setup .NET
@@ -61,23 +61,46 @@ jobs:
     - name: Restore dependencies
       run: dotnet restore
     
-    # Begin SonarQube analysis (SECURE - uses environment variable)
+    # Begin SonarQube analysis with coverage settings
     - name: Begin SonarQube analysis
       env:
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
       shell: powershell
       run: |
-        ${{ runner.temp }}\scanner\dotnet-sonarscanner begin /k:"Balaji-Sundar-S_CI-CD-Pipeline-Learning" /o:"balaji-sundar-s" /d:sonar.token="$env:SONAR_TOKEN" /d:sonar.host.url="https://sonarcloud.io"
+        ${{ runner.temp }}\scanner\dotnet-sonarscanner begin `
+          /k:"Balaji-Sundar-S_CI-CD-Pipeline-Learning" `
+          /o:"balaji-sundar-s" `
+          /d:sonar.token="$env:SONAR_TOKEN" `
+          /d:sonar.host.url="https://sonarcloud.io" `
+          /d:sonar.cs.opencover.reportsPaths="**/coverage.opencover.xml" `
+          /d:sonar.coverage.exclusions="**/Program.cs,**/*.cshtml,**/wwwroot/**"
     
     # Build solution
     - name: Build solution
       run: dotnet build --configuration Release --no-restore
     
-    # Run tests
-    - name: Run tests
-      run: dotnet test --configuration Release --no-build --verbosity normal --logger "trx;LogFileName=test-results.trx"
+    # Run tests with code coverage
+    - name: Run tests with coverage
+      run: dotnet test --configuration Release --no-build --verbosity normal --collect:"XPlat Code Coverage" --results-directory ./coverage --logger "trx;LogFileName=test-results.trx" -- DataCollectionRunSettings.DataCollectors.DataCollector.Configuration.Format=opencover
     
-    # End SonarQube analysis (SECURE - uses environment variable)
+    # Display coverage summary (optional)
+    - name: Code Coverage Summary
+      uses: irongut/CodeCoverageSummary@v1.3.0
+      with:
+        filename: 'coverage/**/coverage.opencover.xml'
+        badge: true
+        format: 'markdown'
+        output: 'both'
+    
+    # Add coverage comment to PR (optional)
+    - name: Add Coverage PR Comment
+      uses: marocchino/sticky-pull-request-comment@v2
+      if: github.event_name == 'pull_request'
+      with:
+        recreate: true
+        path: code-coverage-results.md
+    
+    # End SonarQube analysis
     - name: End SonarQube analysis
       env:
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
@@ -92,3 +115,11 @@ jobs:
       with:
         name: test-results
         path: '**/test-results.trx'
+    
+    # Upload coverage reports
+    - name: Upload coverage reports
+      uses: actions/upload-artifact@v4
+      if: always()
+      with:
+        name: coverage-reports
+        path: 'coverage/**/coverage.opencover.xml'
