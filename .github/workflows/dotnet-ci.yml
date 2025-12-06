@@ -61,13 +61,13 @@ jobs:
     - name: Restore dependencies
       run: dotnet restore
     
-    # Begin SonarQube analysis
+    # Begin SonarQube analysis (SECURE - uses environment variable)
     - name: Begin SonarQube analysis
       env:
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
       shell: powershell
       run: |
-        ${{ runner.temp }}\scanner\dotnet-sonarscanner begin /k:"Balaji-Sundar-S_CI-CD-Pipeline-Learning" /o:"balaji-sundar-s" /d:sonar.token="${{ secrets.SONAR_TOKEN }}" /d:sonar.host.url="https://sonarcloud.io"
+        ${{ runner.temp }}\scanner\dotnet-sonarscanner begin /k:"Balaji-Sundar-S_CI-CD-Pipeline-Learning" /o:"balaji-sundar-s" /d:sonar.token="$env:SONAR_TOKEN" /d:sonar.host.url="https://sonarcloud.io"
     
     # Build solution
     - name: Build solution
@@ -77,13 +77,13 @@ jobs:
     - name: Run tests
       run: dotnet test --configuration Release --no-build --verbosity normal --logger "trx;LogFileName=test-results.trx"
     
-    # End SonarQube analysis
+    # End SonarQube analysis (SECURE - uses environment variable)
     - name: End SonarQube analysis
       env:
         SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
       shell: powershell
       run: |
-        ${{ runner.temp }}\scanner\dotnet-sonarscanner end /d:sonar.token="${{ secrets.SONAR_TOKEN }}"
+        ${{ runner.temp }}\scanner\dotnet-sonarscanner end /d:sonar.token="$env:SONAR_TOKEN"
     
     # Upload test results
     - name: Upload test results
