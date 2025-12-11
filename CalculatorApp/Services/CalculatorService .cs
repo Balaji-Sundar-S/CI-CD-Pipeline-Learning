@@ -8,6 +8,8 @@
 
         public double Multiply(double a, double b) => a * b;
 
+        //small change
+
         public double Divide(double a, double b)
         {
             if (b == 0)
